@@ -58,7 +58,11 @@ we running, and also whether we are doing a `short_run`. The `short_run` argumen
 dictates whether a small number of trees are used in the BRT.
 
 ```{r, eval = FALSE}
-# date <- "2021-08-20"
+# date <- "2021-08-25"
+
+# are we doing just a short run. If so only 20 mcmc iterations are used
+# and only 2 draws from the posterior. Set this to TRUE to do a quick test 
+# run that everything is working basically.
 short_run <- FALSE
 ```
 
@@ -109,11 +113,6 @@ n_mcmc <- 20000
 # leave this as FALSE and see FAQs for more info on this
 parallel <- FALSE
 
-# are we doing just a short run. If so only 20 mcmc iterations are used
-# and only 2 draws from the posterior. Set this to TRUE to do a quick test 
-# run that everything is working basically.
-short_run <- FALSE
-
 # not needed input parameters - leave as FALSE. See FAQ for more info on these
 full_scenarios <- FALSE
 gibbs_sampling <- FALSE
@@ -122,7 +121,7 @@ gibbs_sampling <- FALSE
 iso3cs <- grep('^[A-Z]{3}\\s*', readLines(file.path(here::here(), "countries")), value = TRUE)
 
 # make the orderly bundles to be run on the cluster
-test <- FALSE
+test <- short_run
 if(test) {
 path_bundles <- file.path("L:/OJ/glodide/analysis/data","raw_test", date)
 } else {
