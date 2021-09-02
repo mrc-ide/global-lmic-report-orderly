@@ -64,6 +64,11 @@ dictates whether a small number of trees are used in the BRT.
 # and only 2 draws from the posterior. Set this to TRUE to do a quick test 
 # run that everything is working basically.
 short_run <- FALSE
+
+# Are we fitting to excess mortality data?
+# if yes we call the economist models from github and use the excess_mortality task
+# to fit to the data
+excess_mortality <- FALSE
 ```
 
 These arguments are then passed to our 3 tasks:
@@ -73,13 +78,20 @@ message("*** ECDC data")
 ecdc_id <- orderly::orderly_run("ecdc", parameters = list(date=date), echo = FALSE)
 orderly::orderly_commit(ecdc_id)
 
-message("*** Oxford GRT data")
-oxford_id <- orderly::orderly_run("oxford_grt", parameters = list(date=date), echo = FALSE)
-orderly::orderly_commit(oxford_id)
+if(excess_mortality){
+  message("*** Economist Model data")
+  econ_id <- orderly::orderly_run("economist", parameters = list(date=date), echo = FALSE)
+  orderly::orderly_commit(econ_id)
+} else{
+  #these are not used in the excess_mortality fitting
+  message("*** Oxford GRT data")
+  oxford_id <- orderly::orderly_run("oxford_grt", parameters = list(date=date), echo = FALSE)
+  orderly::orderly_commit(oxford_id)
 
-message("*** Google BRT data")
-google_id <- orderly::orderly_run("brt_google_mobility", parameters = list(date=date, short_run = short_run), echo = FALSE)
-orderly::orderly_commit(google_id)
+  message("*** Google BRT data")
+  google_id <- orderly::orderly_run("brt_google_mobility", parameters = list(date=date, short_run = short_run), echo = FALSE)
+  orderly::orderly_commit(google_id)
+}
 ```
 
 Above, we are using `orderly::orderly_run` to run our 3 tasks in our R session, 
@@ -130,6 +142,25 @@ path_bundles <- file.path("L:/OJ/glodide/analysis/data","raw_test", date)
 dir.create(path_bundles, showWarnings = FALSE)
 
 # bundle these up - this will take like 10 mins to create all the zips. 
+if(excess_mortality){
+  bundles <- lapply(
+  iso3cs, function(x) {
+    orderly::orderly_bundle_pack(
+      path = path_bundles,
+      name = "excess_mortality",
+      parameters = list(
+        iso3c = x,
+        date=date,
+        short_run=short_run,
+        parallel=parallel,
+        full_scenarios=full_scenarios,
+        gibbs_sampling=gibbs_sampling,
+        n_mcmc=n_mcmc
+      )
+    )
+  }
+ )
+} else{
 bundles <- lapply(
   iso3cs, function(x) {
     orderly::orderly_bundle_pack(
@@ -147,6 +178,7 @@ bundles <- lapply(
     )
   }
 )
+}
 
 # now label these with the iso3cs and save the file paths
 names(bundles) <- iso3cs

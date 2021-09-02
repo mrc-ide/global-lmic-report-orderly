@@ -22,7 +22,7 @@ if(packageVersion("nimue") < version_min) {
 ## -----------------------------------------------------------------------------
 
 # get data from economist script
-data <- read.csv("export_country.csv")
+data <- readRDS("excess_deaths.Rds")
 data2 <- data[data$iso3c == iso3c, ] %>%
   mutate(date = as.Date(date)) %>%
   arrange(date) %>%

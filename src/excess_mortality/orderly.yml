@@ -181,3 +181,7 @@ depends:
       who_vacc_meta.rds: who_vacc_meta.rds
       who_vacc.rds: who_vacc.rds
       owid.rds: owid.rds
+  economist:
+    id: latest(parameter:date == date)
+    use:
+      excess_deaths.rds: excess_deaths.rds
