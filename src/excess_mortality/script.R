@@ -21,35 +21,46 @@ if(packageVersion("nimue") < version_min) {
 ## a. Get data from local files
 ## -----------------------------------------------------------------------------
 
-# get data from file
+# get data from economist script
 data <- read.csv("export_country.csv")
 data2 <- data[data$iso3c == iso3c, ] %>%
   mutate(date = as.Date(date)) %>%
   arrange(date) %>%
-  select(date, estimated_daily_excess_deaths, daily_covid_deaths) %>%
-  rename(deaths = estimated_daily_excess_deaths,
-         covid = daily_covid_deaths) %>%
-  complete(date = seq.Date(min(date), max(date), 1)) %>%
-  fill(deaths, covid,  .direction = "down") %>%
-  mutate(only_pos = deaths) %>%
-  mutate(only_pos = replace(only_pos, which(only_pos < 0), 0)) %>%
-  rowwise() %>%
-  mutate(new = max(c(deaths, covid))) %>%
-  filter(date <= date_0)
+  #use real data where poss
+  mutate(deaths = if_else(
+    is.na(daily_excess_deaths),
+    estimated_daily_excess_deaths_raw_estimate,
+    daily_excess_deaths
+  ), #if less than reported covid deaths then replace with that
+  deaths = if_else(
+    deaths < daily_covid_deaths,
+    daily_covid_deaths,
+    deaths
+  ),#ensure date is first of week then move to mid week
+  date = lubridate::floor_date(date, unit = "week") + 3
+  ) %>%
+  select(date, deaths) %>%
+  #if deaths are negative set to 0
+  mutate(
+    deaths = if_else(
+      deaths < 0,
+      0,
+      deaths
+    )
+  )
 
-# TODO: Figure out what our actual timeseries of daily deaths is and how to create it:
-# e.g. currently the following plot will show isues with say using the max of either deaths or covid above:
-# ggplot(data2, aes(date, cumsum(deaths))) + geom_line() +
-# geom_line(aes(y = cumsum(covid)), color = "red") +
-# geom_line(aes(y = cumsum(new)), color = "blue") +
-# geom_line(aes(y = cumsum(only_pos)), color = "green")
 
 ## b. Sort out what is to be our death time series
 ## -----------------------------------------------------------------------------
 
 # here I have just taken the maximum of either excess or covid on each day.
 # but this is probably not the best idea as it likely overestimates covid deaths
-df <- data2 %>% select(date, new) %>% rename(deaths = new)
+
+# I'm not sure this does over estimate, if excess mortality is disconnected to
+# covid deaths then we are essentially using reported deaths (an under-estimate).
+# Only case I can think of for over-estimate is when excess deaths spikes due to
+# lack of treatment etc, whilst covid deaths are well reported and tested for.
+df <- data2
 df$deaths <- as.integer(df$deaths)
 
 ## c. Any other parameters needed to be worked out
