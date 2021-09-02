@@ -73,6 +73,11 @@ if(!(iso3c %in% squire::population$iso3c)) {
 country <- squire::population$country[match(iso3c, squire::population$iso3c)]
 pop <- squire::get_population(country)$n
 
+if(short_run) {
+  replicates <- 2
+  n_mcmc <- 20
+  n_chains <- 1
+}
 
 ## -----------------------------------------------------------------------------
 ## 2. Fit Model
@@ -89,6 +94,7 @@ res <- fit_spline_rt(
   pars_obs_dur_R = as.numeric(dur_R),
   pars_obs_prob_hosp_multiplier = as.numeric(prob_hosp_multiplier),
   pars_obs_delta_start_date = as.Date(delta_start_date),
+  n_chains = as.numeric(n_chains)
 )
 
 ## -----------------------------------------------------------------------------

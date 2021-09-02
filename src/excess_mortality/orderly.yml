@@ -34,12 +34,16 @@ script: script.R
 # a parameter of b with no default.
 #
 parameters:
+    short_run:
+      default: FALSE
     iso3c:
       default: "ATG"
     replicates:
       default: 20
     n_mcmc:
       default: 20000
+    n_chains:
+      default: 3
     prob_hosp_multiplier:
       default: 1
     dur_R:

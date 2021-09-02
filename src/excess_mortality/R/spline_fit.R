@@ -9,7 +9,8 @@ fit_spline_rt <- function(data,
                           model = "NIMUE",
                           n_mcmc = 10000,
                           replicates = 20,
-                          rw_duration = 14
+                          rw_duration = 14,
+                          n_chains = 3
 ) {
 
 
@@ -53,7 +54,6 @@ fit_spline_rt <- function(data,
 
   # pmcmc args
   n_particles <- 2 # we use the deterministic model now so this does nothing (makes your life quicker and easier too)
-  n_chains <- 3 # number of chains
   start_adaptation <- max(2, round(n_mcmc/10)) # how long before adapting
 
   # parallel call
