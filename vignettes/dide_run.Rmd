@@ -82,6 +82,7 @@ if(excess_mortality){
   message("*** Economist Model data")
   econ_id <- orderly::orderly_run("economist", parameters = list(date=date), echo = FALSE)
   orderly::orderly_commit(econ_id)
+  #ideally check the calibration pdf
 } else{
   #these are not used in the excess_mortality fitting
   message("*** Oxford GRT data")

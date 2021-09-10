@@ -24,31 +24,6 @@ if(packageVersion("nimue") < version_min) {
 # get data from economist script
 data <- readRDS("excess_deaths.Rds")
 data2 <- data[data$iso3c == iso3c, ] %>%
-  mutate(date = as.Date(date)) %>%
-  arrange(date) %>%
-  #use real data where poss
-  mutate(deaths = if_else(
-    is.na(daily_excess_deaths),
-    estimated_daily_excess_deaths_raw_estimate,
-    daily_excess_deaths
-  ), #if less than reported covid deaths then replace with that
-  deaths = if_else(
-    deaths < daily_covid_deaths,
-    daily_covid_deaths,
-    deaths
-  ),#ensure date is first of week then move to mid week
-  date = lubridate::floor_date(date, unit = "week") + 3
-  ) %>%
-  select(date, deaths) %>%
-  #if deaths are negative set to 0
-  mutate(
-    deaths = if_else(
-      deaths < 0,
-      0,
-      deaths
-    )
-  )
-
 
 ## b. Sort out what is to be our death time series
 ## -----------------------------------------------------------------------------

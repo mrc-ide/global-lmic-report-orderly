@@ -39,6 +39,10 @@ artefacts:
       description: Excess mortality estimates
       filenames:
         - excess_deaths.rds
+  - staticgraph:
+      description: Plots of economist model fits against reported covid deaths
+      filenames:
+        - calibration/plots.pdf
 
 # Packages that should be loaded before the script is run.  Use this
 # in preference to explicit library() calls in your script because it
@@ -46,3 +50,5 @@ artefacts:
 # reports.
 packages:
   - dplyr
+  - lubridate
+  - ggplot2
