@@ -23,7 +23,7 @@ if(packageVersion("nimue") < version_min) {
 
 # get data from economist script
 data <- readRDS("excess_deaths.Rds")
-data2 <- data[data$iso3c == iso3c, ] %>%
+data2 <- data[data$iso3c == iso3c, ]
 
 ## b. Sort out what is to be our death time series
 ## -----------------------------------------------------------------------------
