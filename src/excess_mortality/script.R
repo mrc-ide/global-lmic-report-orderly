@@ -63,64 +63,88 @@ data2 <- data[data$iso3c == iso3c, ] %>%
 df <- data2
 df$deaths <- as.integer(df$deaths)
 
-## c. Any other parameters needed to be worked out
-## -----------------------------------------------------------------------------
+#if no data or no deaths skip over and make empty file
+if(nrow(df) == 0 | sum(df$deaths) == 0){
+  #save empty files
+  saveRDS(NULL, "res.rds")
+  ggsave("fitting.pdf",width=12, height=12,NULL)
 
-# check that we have this iso3c in squire
-if(!(iso3c %in% squire::population$iso3c)) {
-  stop("iso3c not found in squire")
+} else{
+  #load par_inits
+  pars_init_prev <- readRDS("pars_init.rds")
+
+  #also check if start date is compatible with par_init since start date can
+  #change with excess estimates
+  data_start_date <- df %>% filter(deaths > 0) %>% filter(date == min(date)) %>% pull(date)
+  par_start_date <- pars_init_prev[[iso3c]]$start_date %>%
+    as.Date()
+  if(
+   par_start_date > data_start_date - 10 |
+   par_start_date < data_start_date - 55
+  ){
+    #remove start date from par_init
+    pars_init_prev[[iso3c]]$start_date <- NULL
+  }
+
+  ## c. Any other parameters needed to be worked out
+  ## -----------------------------------------------------------------------------
+
+  # check that we have this iso3c in squire
+  if(!(iso3c %in% squire::population$iso3c)) {
+    stop("iso3c not found in squire")
+  }
+  country <- squire::population$country[match(iso3c, squire::population$iso3c)]
+  pop <- squire::get_population(country)$n
+
+  if(short_run) {
+    replicates <- 2
+    n_mcmc <- 20
+    n_chains <- 1
+  }
+
+  ## -----------------------------------------------------------------------------
+  ## 2. Fit Model
+  ## -----------------------------------------------------------------------------
+
+  # fit model
+  res <- fit_spline_rt(
+    data = df,
+    country = country,
+    pop = pop,
+    n_mcmc = as.numeric(n_mcmc),
+    replicates = as.numeric(replicates),
+    model = model,
+    pars_obs_dur_R = as.numeric(dur_R),
+    pars_obs_prob_hosp_multiplier = as.numeric(prob_hosp_multiplier),
+    pars_obs_delta_start_date = as.Date(delta_start_date),
+    n_chains = as.numeric(n_chains),
+    pars_init_prev = pars_init_prev
+  )
+
+  ## -----------------------------------------------------------------------------
+  ## 3. Summarise model for ease of viewing outputs and goodness of fit
+  ## -----------------------------------------------------------------------------
+
+  # remove the output for memory and ease
+  output <- res$output
+  res$output <- NULL
+
+  # save output without output for memory
+  saveRDS(res, "res.rds")
+  res$output <- output
+
+  # make a series of quick plots so we can check fits easily afterwards
+  if (model == "SQUIRE") {
+    rtp <- rt_plot_immunity(res)
+  } else {
+    rtp <- rt_plot_immunity_vaccine(res)
+  }
+
+  dp <- dp_plot(res)
+  cdp <- cdp_plot(res)
+  ar <- ar_plot(res)
+
+  ggsave("fitting.pdf",width=12, height=12,
+         cowplot::plot_grid(rtp$plot + ggtitle(country),
+                            dp, cdp, ar, ncol = 1))
 }
-country <- squire::population$country[match(iso3c, squire::population$iso3c)]
-pop <- squire::get_population(country)$n
-
-if(short_run) {
-  replicates <- 2
-  n_mcmc <- 20
-  n_chains <- 1
-}
-
-## -----------------------------------------------------------------------------
-## 2. Fit Model
-## -----------------------------------------------------------------------------
-
-# fit model
-res <- fit_spline_rt(
-  data = df,
-  country = country,
-  pop = pop,
-  n_mcmc = as.numeric(n_mcmc),
-  replicates = as.numeric(replicates),
-  model = model,
-  pars_obs_dur_R = as.numeric(dur_R),
-  pars_obs_prob_hosp_multiplier = as.numeric(prob_hosp_multiplier),
-  pars_obs_delta_start_date = as.Date(delta_start_date),
-  n_chains = as.numeric(n_chains)
-)
-
-## -----------------------------------------------------------------------------
-## 3. Summarise model for ease of viewing outputs and goodness of fit
-## -----------------------------------------------------------------------------
-
-# remove the output for memory and ease
-output <- res$output
-res$output <- NULL
-
-# save output without output for memory
-saveRDS(res, "res.rds")
-res$output <- output
-
-# make a series of quick plots so we can check fits easily afterwards
-if (model == "SQUIRE") {
-  rtp <- rt_plot_immunity(res)
-} else {
-  rtp <- rt_plot_immunity_vaccine(res)
-}
-
-dp <- dp_plot(res)
-cdp <- cdp_plot(res)
-ar <- ar_plot(res)
-
-ggsave("fitting.pdf",width=12, height=12,
-       cowplot::plot_grid(rtp$plot + ggtitle(country),
-                          dp, cdp, ar, ncol = 1))
-

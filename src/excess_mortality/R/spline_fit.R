@@ -10,7 +10,8 @@ fit_spline_rt <- function(data,
                           n_mcmc = 10000,
                           replicates = 20,
                           rw_duration = 14,
-                          n_chains = 3
+                          n_chains = 3,
+                          pars_init_prev = readRDS("pars_init.rds")
 ) {
 
 
@@ -203,11 +204,11 @@ fit_spline_rt <- function(data,
   mix_mat <- squire::get_mixing_matrix(country)
 
   # Now overwrite these with the initial conditions previously found
-  pi <- readRDS("pars_init.rds")
+  pi <- pars_init_prev
   pf <- pi[[iso3c]]
-  pf$start_date <- as.Date(pf$start_date)
   pos_mat <- match(names(pars_init), names(pf))
   pars_init[which(!is.na(pos_mat))] <- as.list(pf[na.omit(pos_mat)])
+  pars_init$start_date <- as.Date(pars_init$start_date)
 
   # grab old scaling factor
   scaling_factor <- 1

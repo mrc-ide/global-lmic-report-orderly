@@ -142,7 +142,6 @@ sources:
 #
 resources:
   - pars_init.rds
-  - export_country.csv
   - coverage_strategies.rds
 
 global_resources:
