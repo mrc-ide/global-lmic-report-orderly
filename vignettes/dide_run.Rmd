@@ -58,7 +58,7 @@ we running, and also whether we are doing a `short_run`. The `short_run` argumen
 dictates whether a small number of trees are used in the BRT.
 
 ```{r, eval = FALSE}
-date <- "2021-08-18"
+date <- "2021-09-09"
 
 # are we doing just a short run. If so only 20 mcmc iterations are used
 # and only 2 draws from the posterior. Set this to TRUE to do a quick test 
@@ -82,6 +82,11 @@ if(excess_mortality){
   message("*** Economist Model data")
   econ_id <- orderly::orderly_run("economist", parameters = list(date=date), echo = FALSE)
   orderly::orderly_commit(econ_id)
+  #ideally check the calibration pdf
+  
+  message("*** Covid Variants data")
+  covar_id <- orderly::orderly_run("covariants", parameters = list(date=date), echo = FALSE)
+  orderly::orderly_commit(covar_id)
   #ideally check the calibration pdf
 } else{
   #these are not used in the excess_mortality fitting
@@ -136,13 +141,16 @@ if(!excess_mortality){
 iso3cs <- grep('^[A-Z]{3}\\s*', readLines(file.path(here::here(), "countries")), value = TRUE)
 
 # make the orderly bundles to be run on the cluster
-test <- short_run
-if(test) {
-path_bundles <- file.path("Q:/COVID-Fitting/glodide/analysis/data","raw_test", date)
-} else {
-  path_bundles <- file.path("Q:/COVID-Fitting/glodide/analysis/data", "raw", date)
-}
-dir.create(path_bundles, showWarnings = FALSE)
+path_bundles <- file.path(
+  "Q:/COVID-Fitting/glodide/analysis/data",
+          paste0(
+            "raw",
+            ifelse(excess_mortality, "_excess", ""),
+            ifelse(short_run, "_test", "")
+            ),
+          date
+          )
+dir.create(path_bundles, showWarnings = FALSE, recursive = TRUE)
 
 # bundle these up - this will take like 10 mins to create all the zips. 
 if(excess_mortality){

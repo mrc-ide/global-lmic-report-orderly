@@ -6,6 +6,7 @@ fit_spline_rt <- function(data,
                           pars_obs_dur_R = 365,
                           pars_obs_prob_hosp_multiplier = 1,
                           pars_obs_delta_start_date = as.Date("2021-04-01"),
+                          pars_obs_shift_duration = 60,
                           model = "NIMUE",
                           n_mcmc = 10000,
                           replicates = 20,
@@ -145,7 +146,8 @@ fit_spline_rt <- function(data,
   pars_obs = list(phi_cases = 1, k_cases = 2, phi_death = 1, k_death = 2, exp_noise = 1e6,
                   dur_R = pars_obs_dur_R,
                   prob_hosp_multiplier = pars_obs_prob_hosp_multiplier,
-                  delta_start_date = pars_obs_delta_start_date)
+                  delta_start_date = pars_obs_delta_start_date,
+                  shift_duration = pars_obs_shift_duration)
 
   # add in the spline list
   pars_init <- append(pars_init, pars_init_rw)
@@ -198,7 +200,10 @@ fit_spline_rt <- function(data,
   owid <- owid %>% filter(countryterritoryCode == iso3c) %>%
     select(date, contains("vacc"))
 
-  vacc_inputs <- get_vaccine_inputs(iso3c, vdm, vacc_types, owid, date_0, who_vacc, who_vacc_meta)
+  vacc_inputs <- get_vaccine_inputs(iso3c, vdm, vacc_types, owid, date_0, who_vacc, who_vacc_meta,
+                                    delta_start_date = pars_obs_delta_start_date,
+                                    shift_duration = pars_obs_shift_duration
+  )
 
   # mixing matrix - assume is same as country as whole
   mix_mat <- squire::get_mixing_matrix(country)
@@ -506,7 +511,7 @@ run_deterministic_comparison_excess <- function(data, squire_model, model_params
   if("dur_R" %in% names(obs_params)) {
     if(obs_params$dur_R != 365) {
       ch_dur_R <- as.integer(as.Date(obs_params$delta_start_date) - model_start_date)
-      model_params$tt_dur_R <- c(0, ch_dur_R, ch_dur_R+60)
+      model_params$tt_dur_R <- c(0, ch_dur_R, ch_dur_R + obs_params$shift_duration)
       model_params$gamma_R <- c(model_params$gamma_R, 2/obs_params$dur_R, model_params$gamma_R)
     }
   }
@@ -514,9 +519,14 @@ run_deterministic_comparison_excess <- function(data, squire_model, model_params
   # here we change the prob_hosp as needed
   if("prob_hosp_multiplier" %in% names(obs_params)) {
     if(obs_params$prob_hosp_multiplier != 1) {
+      #change to increase step wise to new value over period defined by shift_duration
       ch_dur_R <- as.integer(as.Date(obs_params$delta_start_date) - model_start_date)
-      model_params$tt_prob_hosp_multiplier <- c(0, ch_dur_R)
-      model_params$prob_hosp_multiplier <- c(model_params$prob_hosp_multiplier, obs_params$prob_hosp_multiplier)
+      model_params$tt_prob_hosp_multiplier <- unique(c(
+        0,
+        round(seq(ch_dur_R, ch_dur_R + obs_params$shift_duration, by = 1))
+      ))
+      model_params$prob_hosp_multiplier <- seq(model_params$prob_hosp_multiplier, obs_params$prob_hosp_multiplier,
+                                               length.out = length(model_params$tt_prob_hosp_multiplier))
     }
   }
 

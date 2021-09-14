@@ -50,15 +50,17 @@ if(nrow(df) == 0 | sum(df$deaths) == 0){
 
   #also check if start date is compatible with par_init since start date can
   #change with excess estimates
-  data_start_date <- df %>% filter(deaths > 0) %>% filter(date == min(date)) %>% pull(date)
-  par_start_date <- pars_init_prev[[iso3c]]$start_date %>%
-    as.Date()
-  if(
-   par_start_date > data_start_date - 10 |
-   par_start_date < data_start_date - 55
-  ){
-    #remove start date from par_init
-    pars_init_prev[[iso3c]]$start_date <- NULL
+  if(!is.null(pars_init_prev[[iso3c]]$start_date)){
+    data_start_date <- df %>% filter(deaths > 0) %>% filter(date == min(date)) %>% pull(date)
+    par_start_date <- pars_init_prev[[iso3c]]$start_date %>%
+      as.Date()
+    if(
+      par_start_date > data_start_date - 10 |
+      par_start_date < data_start_date - 55
+    ){
+      #remove start date from par_init
+      pars_init_prev[[iso3c]]$start_date <- NULL
+    }
   }
 
   ## c. Any other parameters needed to be worked out
@@ -77,8 +79,75 @@ if(nrow(df) == 0 | sum(df$deaths) == 0){
     n_chains <- 1
   }
 
+
   ## -----------------------------------------------------------------------------
-  ## 2. Fit Model
+  ## 2. Delta Adjustments
+  ## -----------------------------------------------------------------------------
+
+  if(adjust_delta){
+    #open data from covariants
+    delta_characteristics <- readRDS("delta_characteristics.Rds") %>% ungroup()
+
+    #get data or impute if not there
+    if(iso3c %in% delta_characteristics$iso3c){
+      this_iso3c <- iso3c
+      delta_characteristics <- delta_characteristics %>%
+        filter(iso3c == this_iso3c) %>%
+        select(where(~is.numeric(.x)|is.Date(.x)))
+    } else if(
+      countrycode::countrycode(iso3c, origin = "iso3c", destination = "un.regionsub.name") %in%
+      delta_characteristics$sub_region
+    ){
+      this_sub_region <- countrycode::countrycode(iso3c, origin = "iso3c", destination = "un.regionsub.name")
+      #we then use the median values of all countries in that sub region
+      delta_characteristics <- delta_characteristics %>%
+        filter(
+          sub_region == this_sub_region
+        ) %>%
+        summarise(across(
+          where(~is.numeric(.x)|is.Date(.x)),
+          ~median(.x, na.rm = T)
+        ))
+    } else if(
+      countrycode::countrycode(iso3c, origin = "iso3c", destination = "continent") %in%
+      delta_characteristics$continent
+    ){
+      this_continent <- countrycode::countrycode(iso3c, origin = "iso3c", destination = "continent")
+      #we then use the median values of all countries in that contient
+      delta_characteristics <- delta_characteristics %>%
+        filter(
+          continent == this_continent
+        ) %>%
+        summarise(across(
+          where(~is.numeric(.x)|is.Date(.x)),
+          ~median(.x, na.rm = T)
+        ))
+    } else{
+      delta_characteristics <- delta_characteristics %>%
+        summarise(across(
+          where(~is.numeric(.x)|is.Date(.x)),
+          ~median(.x, na.rm = T)
+        ))
+    }
+
+    #we only use start date and immune escape atm
+    delta_start_date <- as.Date(delta_characteristics$start_date)
+    #assume shift takes 60 days
+    days_in_shift <- 60
+    #derive dur_R
+    dur_R <- 1/((days_in_shift/360 - log(1-delta_characteristics$immune_escape))/days_in_shift)
+    #get modifier on hospitalisation
+    prob_hosp_multiplier <- delta_characteristics$prob_hosp_multiplier
+  } else{
+    #these settings should lead to no adjustment
+    dur_R <- 365
+    prob_hosp_multiplier <- 1
+    delta_start_date <- NULL
+    days_in_shift <- NULL
+  }
+
+  ## -----------------------------------------------------------------------------
+  ## 3. Fit Model
   ## -----------------------------------------------------------------------------
 
   # fit model
@@ -89,15 +158,16 @@ if(nrow(df) == 0 | sum(df$deaths) == 0){
     n_mcmc = as.numeric(n_mcmc),
     replicates = as.numeric(replicates),
     model = model,
-    pars_obs_dur_R = as.numeric(dur_R),
-    pars_obs_prob_hosp_multiplier = as.numeric(prob_hosp_multiplier),
-    pars_obs_delta_start_date = as.Date(delta_start_date),
+    pars_obs_dur_R = dur_R,
+    pars_obs_prob_hosp_multiplier = prob_hosp_multiplier,
+    pars_obs_delta_start_date = delta_start_date,
+    pars_obs_shift_duration = days_in_shift,
     n_chains = as.numeric(n_chains),
     pars_init_prev = pars_init_prev
   )
 
   ## -----------------------------------------------------------------------------
-  ## 3. Summarise model for ease of viewing outputs and goodness of fit
+  ## 4. Summarise model for ease of viewing outputs and goodness of fit
   ## -----------------------------------------------------------------------------
 
   # remove the output for memory and ease
