@@ -2,7 +2,6 @@
 fit_spline_rt <- function(data,
                           country,
                           pop,
-                          vacc_inputs,
                           pars_obs_dur_R = 365,
                           pars_obs_prob_hosp_multiplier = 1,
                           pars_obs_delta_start_date = as.Date("2021-04-01"),
@@ -11,8 +10,7 @@ fit_spline_rt <- function(data,
                           n_mcmc = 10000,
                           replicates = 20,
                           rw_duration = 14,
-                          n_chains = 3,
-                          pars_init_prev = readRDS("pars_init.rds")
+                          n_chains = 3
 ) {
 
 
@@ -163,11 +161,11 @@ fit_spline_rt <- function(data,
   # MCMC Functions - Prior and Likelihood Calculation
   logprior <- function(pars){
     ret <- dunif(x = pars[["start_date"]], min = -55, max = -10, log = TRUE) +
-      dunif(x = pars[["R0"]], min = 1.5, max = 10, log = TRUE) +
-      dnorm(x = pars[["Meff"]], mean = 0, sd = 1, log = TRUE) +
-      dunif(x = pars[["Meff_pl"]], min = 0, max = 1, log = TRUE) +
-      dnorm(x = pars[["Rt_shift"]], mean = 0, sd = 1, log = TRUE) +
-      dunif(x = pars[["Rt_shift_scale"]], min = 0.1, max = 10, log = TRUE)
+      dunif(x = pars[["R0"]], min = 1.5, max = 10, log = TRUE)# +
+      #dnorm(x = pars[["Meff"]], mean = 0, sd = 1, log = TRUE) +
+      #dunif(x = pars[["Meff_pl"]], min = 0, max = 1, log = TRUE) +
+      #dnorm(x = pars[["Rt_shift"]], mean = 0, sd = 1, log = TRUE) +
+      #dunif(x = pars[["Rt_shift_scale"]], min = 0.1, max = 10, log = TRUE)
 
     # get rw spline parameters
     if(any(grepl("Rt_rw", names(pars)))) {
@@ -209,8 +207,14 @@ fit_spline_rt <- function(data,
   mix_mat <- squire::get_mixing_matrix(country)
 
   # Now overwrite these with the initial conditions previously found
-  pi <- pars_init_prev
+  pi <- readRDS("pars_init.rds")
   pf <- pi[[iso3c]]
+  #only use old start date if its compatible with the data, as this can change with excess mortality estimates
+  if("start_date" %in% names(pf)){
+    if(pf$start_date > pars_max$start_date | pf$start_date < pars_min$start_date){
+      pf$start_date <- NULL
+    }
+  }
   pos_mat <- match(names(pars_init), names(pf))
   pars_init[which(!is.na(pos_mat))] <- as.list(pf[na.omit(pos_mat)])
   pars_init$start_date <- as.Date(pars_init$start_date)
@@ -227,6 +231,12 @@ fit_spline_rt <- function(data,
 
     # old proposal kernel
     proposal_kernel_proposed <- pf$covariance_matrix[[1]]
+
+    #ensure that it only contains parameters used e.g. already in the current kernal
+    proposal_kernel_proposed <- proposal_kernel_proposed[
+      rownames(proposal_kernel_proposed) %in% rownames(proposal_kernel),
+      colnames(proposal_kernel_proposed) %in% colnames(proposal_kernel)
+      ]
 
     # check if it needs to be expanded
     if(length(grep("Rt_rw", colnames(proposal_kernel_proposed))) == rw_needed) {

@@ -45,23 +45,6 @@ if(nrow(df) == 0 | sum(df$deaths) == 0){
   ggsave("fitting.pdf",width=12, height=12,NULL)
 
 } else{
-  #load par_inits
-  pars_init_prev <- readRDS("pars_init.rds")
-
-  #also check if start date is compatible with par_init since start date can
-  #change with excess estimates
-  if(!is.null(pars_init_prev[[iso3c]]$start_date)){
-    data_start_date <- df %>% filter(deaths > 0) %>% filter(date == min(date)) %>% pull(date)
-    par_start_date <- pars_init_prev[[iso3c]]$start_date %>%
-      as.Date()
-    if(
-      par_start_date > data_start_date - 10 |
-      par_start_date < data_start_date - 55
-    ){
-      #remove start date from par_init
-      pars_init_prev[[iso3c]]$start_date <- NULL
-    }
-  }
 
   ## c. Any other parameters needed to be worked out
   ## -----------------------------------------------------------------------------
@@ -162,8 +145,7 @@ if(nrow(df) == 0 | sum(df$deaths) == 0){
     pars_obs_prob_hosp_multiplier = prob_hosp_multiplier,
     pars_obs_delta_start_date = delta_start_date,
     pars_obs_shift_duration = days_in_shift,
-    n_chains = as.numeric(n_chains),
-    pars_init_prev = pars_init_prev
+    n_chains = as.numeric(n_chains)
   )
 
   ## -----------------------------------------------------------------------------

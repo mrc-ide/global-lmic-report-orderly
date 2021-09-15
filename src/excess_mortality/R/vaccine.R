@@ -564,7 +564,7 @@ get_vaccine_inputs <- function(iso3c, vdm, vacc_types, owid, date_0, who_vacc, w
 
     #add to ret_res
 
-    ret_res$date <- ret_res_df$date
+    ret_res$date_vaccine_change <- ret_res_df$date
     ret_res$max_vaccine <- ret_res_df$max_vaccine
     ret_res$vaccine_efficacy_infection <- lapply(ret_res_df$vei_c, rep, 17)
     ret_res$vaccine_efficacy_disease <- lapply(ret_res_df$ved_c, rep, 17)
