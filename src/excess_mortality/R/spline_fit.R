@@ -46,14 +46,7 @@ fit_spline_rt <- function(data,
   null_na <- function(x) {if(is.null(x)) {NA} else {x}}
   min_death_date <- data$date[which(data$deaths>0)][1]
 
-  # We set the R0_change here to be 1 everywhere to effectively turn off mobility
-  R0_change <- rep(1, nrow(data))
-  date_R0_change <- data$date
-  R0_change <- R0_change[as.Date(date_R0_change) <= date_0]
-  date_R0_change <- date_R0_change[as.Date(date_R0_change) <= date_0]
-
   # pmcmc args
-  n_particles <- 2 # we use the deterministic model now so this does nothing (makes your life quicker and easier too)
   start_adaptation <- max(2, round(n_mcmc/10)) # how long before adapting
 
   # parallel call
@@ -64,50 +57,22 @@ fit_spline_rt <- function(data,
   R0_max <- 10
   last_start_date <- as.Date(null_na(min_death_date))-10
   first_start_date <- as.Date(null_na(min_death_date))-55
-  start_date <- as.Date(null_na(min_death_date))-30
-
-  # These 4 parameters do nothign as setting R0_change to 1
-  Meff_min <- -20
-  Meff_max <- 20
-  Meff_pl_min <- 0
-  Meff_pl_max <- 1
-  Rt_shift_min <- 0
-  Rt_shift_max <- 0.001
-  Rt_shift_scale_min <- 0.1
-  Rt_shift_scale_max <- 10
-
+  date_start <- as.Date(null_na(min_death_date))-30
 
   ## -----------------------------------------------------------------------------
   ## Step 2b: Sourcing suitable starting conditions
   ## -----------------------------------------------------------------------------
 
-  date_start <- data$date[which(cumsum(data$deaths)>10)[1]] - 30
   R0_start <- 3
-
-  # These are the the initial conditions now loaded from our previous run.
-  R0_start <- min(max(R0_start, R0_min), R0_max)
-  date_start <- min(max(as.Date(start_date), as.Date(first_start_date)), as.Date(last_start_date))
-
-  # again these all do nothing
-  Meff_start <- min(max(0, Meff_min), Meff_max)
-  Meff_pl_start <- min(max(0.5, Meff_pl_min), Meff_pl_max)
-  Rt_shift_start <- min(max(0.0005, Rt_shift_min), Rt_shift_max)
-  Rt_shift_scale_start <- min(max(5, Rt_shift_scale_min), Rt_shift_scale_max)
-
-  # Our random walk parameters start after the Meff change
-  # Basically just set this suitably far back in the past
-  date_Meff_change <- date_start - 1
 
   ## -----------------------------------------------------------------------------
   ## Step 2c: Spline set up
   ## -----------------------------------------------------------------------------
 
-  last_shift_date <- as.Date(date_Meff_change) + 1
-  remaining_days <- as.Date(date_0) - last_shift_date - 14 # reporting delay in place
+  remaining_days <- as.Date(date_0) - date_start - 14 # reporting delay in place
 
   # how many spline pars do we need
-  Rt_rw_duration <- rw_duration # i.e. we fit with a 2 week duration for our random walks.
-  rw_needed <- as.numeric(ceiling(remaining_days/Rt_rw_duration))
+  rw_needed <- as.numeric(ceiling(remaining_days/rw_duration))
 
   # set up rw pars
   pars_init_rw <- as.list(rep(0, rw_needed))
@@ -122,25 +87,12 @@ fit_spline_rt <- function(data,
 
   # PMCMC Parameters
   pars_init = list('start_date' = date_start,
-                   'R0' = R0_start,
-                   'Meff' = Meff_start,
-                   'Meff_pl' = Meff_pl_start,
-                   "Rt_shift" = 0,
-                   "Rt_shift_scale" = Rt_shift_scale_start)
+                   'R0' = R0_start)
   pars_min = list('start_date' = first_start_date,
-                  'R0' = R0_min,
-                  'Meff' = Meff_min,
-                  'Meff_pl' = Meff_pl_min,
-                  "Rt_shift" = Rt_shift_min,
-                  "Rt_shift_scale" = Rt_shift_scale_min)
+                  'R0' = R0_min)
   pars_max = list('start_date' = last_start_date,
-                  'R0' = R0_max,
-                  'Meff' = Meff_max,
-                  'Meff_pl' = Meff_pl_max,
-                  "Rt_shift" = Rt_shift_max,
-                  "Rt_shift_scale" = Rt_shift_scale_max)
-  pars_discrete = list('start_date' = TRUE, 'R0' = FALSE, 'Meff' = FALSE,
-                       'Meff_pl' = FALSE, "Rt_shift" = FALSE, "Rt_shift_scale" = FALSE)
+                  'R0' = R0_max)
+  pars_discrete = list('start_date' = TRUE, 'R0' = FALSE)
   pars_obs = list(phi_cases = 1, k_cases = 2, phi_death = 1, k_death = 2, exp_noise = 1e6,
                   dur_R = pars_obs_dur_R,
                   prob_hosp_multiplier = pars_obs_prob_hosp_multiplier,
@@ -161,11 +113,7 @@ fit_spline_rt <- function(data,
   # MCMC Functions - Prior and Likelihood Calculation
   logprior <- function(pars){
     ret <- dunif(x = pars[["start_date"]], min = -55, max = -10, log = TRUE) +
-      dunif(x = pars[["R0"]], min = 1.5, max = 10, log = TRUE)# +
-      #dnorm(x = pars[["Meff"]], mean = 0, sd = 1, log = TRUE) +
-      #dunif(x = pars[["Meff_pl"]], min = 0, max = 1, log = TRUE) +
-      #dnorm(x = pars[["Rt_shift"]], mean = 0, sd = 1, log = TRUE) +
-      #dunif(x = pars[["Rt_shift_scale"]], min = 0.1, max = 10, log = TRUE)
+      dunif(x = pars[["R0"]], min = 1.5, max = 10, log = TRUE)
 
     # get rw spline parameters
     if(any(grepl("Rt_rw", names(pars)))) {
@@ -284,11 +232,14 @@ fit_spline_rt <- function(data,
     squire_model = nimue::nimue_deterministic_model(use_dde = TRUE)
   }
 
+  # calculate dates where R0 changes etc
+
+  date_R0_change <- pars_max$start_date + seq(0, rw_needed-1, by = 1)*rw_duration
+
   # run the pmcmc
   res <- pmcmc_excess(country = country,
                       data = data,
                      gibbs_days = NULL,
-                     gibbs_sampling = FALSE,
                      n_mcmc = n_mcmc,
                      log_prior = logprior,
                      n_particles = 1,
@@ -303,14 +254,12 @@ fit_spline_rt <- function(data,
                      pars_discrete = pars_discrete,
                      pars_obs = pars_obs,
                      proposal_kernel = proposal_kernel,
-                     R0_change = R0_change,
                      date_R0_change = date_R0_change,
-                     Rt_args = squire:::Rt_args_list(
-                       date_Meff_change = date_Meff_change,
-                       scale_Meff_pl = TRUE,
-                       Rt_shift_duration = 1,
-                       Rt_rw_duration = Rt_rw_duration),
+                     R0_change = rep(1, length(date_R0_change)),
                      burnin = ceiling(n_mcmc/10),
+                     Rt_args = list(Rt_rw_duration = rw_duration,
+                                    Rt_rw_start_date = pars_max$start_date,
+                                    Rt_needed = rw_needed),
                      seeding_cases = 5,
                      replicates = replicates,
                      required_acceptance_ratio = 0.20,
@@ -373,25 +322,12 @@ excess_log_likelihood <- function(pars, data, squire_model, model_params, pars_o
   start_date <- pars[["start_date"]]
   squire:::assert_pos(R0)
   squire:::assert_date(start_date)
-  R0_change <- interventions$R0_change
-  date_R0_change <- interventions$date_R0_change
   date_contact_matrix_set_change <- interventions$date_contact_matrix_set_change
   date_ICU_bed_capacity_change <- interventions$date_ICU_bed_capacity_change
   date_hosp_bed_capacity_change <- interventions$date_hosp_bed_capacity_change
   date_vaccine_change <- interventions$date_vaccine_change
   date_vaccine_efficacy_infection_change <- interventions$date_vaccine_efficacy_infection_change
   date_vaccine_efficacy_disease_change <- interventions$date_vaccine_efficacy_disease_change
-  if (is.null(date_R0_change)) {
-    tt_beta <- 0
-  }
-  else {
-    tt_list <- squire:::intervention_dates_for_odin(dates = date_R0_change,
-                                                    change = R0_change, start_date = start_date, steps_per_day = round(1/model_params$dt),
-                                                    starting_change = 1)
-    model_params$tt_beta <- tt_list$tt
-    R0_change <- tt_list$change
-    date_R0_change <- tt_list$dates
-  }
   if (is.null(date_contact_matrix_set_change)) {
     tt_contact_matrix <- 0
   }
@@ -457,25 +393,30 @@ excess_log_likelihood <- function(pars, data, squire_model, model_params, pars_o
     model_params$prob_hosp <- model_params$prob_hosp[tt_list$change,
                                                      , ]
   }
-  R0 <- squire:::evaluate_Rt_pmcmc(R0_change = R0_change, R0 = R0, date_R0_change = date_R0_change,
-                                   pars = pars, Rt_args = Rt_args)
+  #use custom function to get the R0 values and times
+  #get the dates where we will change Rt
+
+  date_R0_change <- c(start_date,
+                      Rt_args$Rt_rw_start_date + seq(0, Rt_args$Rt_needed-1)*Rt_args$Rt_rw_duration
+                      )
+
+  tt_list <- squire:::intervention_dates_for_odin(dates = date_R0_change,
+                                       change = rep(1, length(date_R0_change)), start_date = start_date, steps_per_day = round(1/model_params$dt),
+                                       starting_change = 1)
+  model_params$tt_beta <- tt_list$tt
+
+  R0 <- evaluate_Rt_pmcmc_spline(R0 = R0, date_R0_change = date_R0_change,
+                                     pars = pars, Rt_args = Rt_args)
+
   beta_set <- squire:::beta_est(squire_model = squire_model, model_params = model_params,
                                 R0 = R0)
   model_params$beta_set <- beta_set
-  if (inherits(squire_model, "stochastic")) {
-    pf_result <- squire:::run_particle_filter(data = data, squire_model = squire_model,
-                                              model_params = model_params, model_start_date = start_date,
-                                              obs_params = pars_obs, n_particles = n_particles,
-                                              forecast_days = forecast_days, save_particles = save_particles,
-                                              full_output = full_output, return = pf_return)
-  }
-  else if (inherits(squire_model, "deterministic")) {
-    pf_result <- run_deterministic_comparison_excess(data = data,
-                                                    squire_model = squire_model, model_params = model_params,
-                                                    model_start_date = start_date, obs_params = pars_obs,
-                                                    forecast_days = forecast_days, save_history = save_particles,
-                                                    return = pf_return)
-  }
+
+  pf_result <- run_deterministic_comparison_excess(data = data,
+                                                   squire_model = squire_model, model_params = model_params,
+                                                   model_start_date = start_date, obs_params = pars_obs,
+                                                   forecast_days = forecast_days, save_history = save_particles,
+                                                   return = pf_return)
   pf_result
 
 }
@@ -740,13 +681,9 @@ pmcmc_excess <- function(data,
 
   # check proposal kernel
   squire:::assert_matrix(proposal_kernel)
-  if (gibbs_sampling) {
-    squire:::assert_eq(colnames(proposal_kernel), names(pars_init[[1]][-1]))
-    squire:::assert_eq(rownames(proposal_kernel), names(pars_init[[1]][-1]))
-  } else {
-    squire:::assert_eq(colnames(proposal_kernel), names(pars_init[[1]]))
-    squire:::assert_eq(rownames(proposal_kernel), names(pars_init[[1]]))
-  }
+
+  squire:::assert_eq(colnames(proposal_kernel), names(pars_init[[1]]))
+  squire:::assert_eq(rownames(proposal_kernel), names(pars_init[[1]]))
 
   # check likelihood items
   if ( !(is.null(log_likelihood) | inherits(log_likelihood, "function")) ) {
@@ -772,16 +709,6 @@ pmcmc_excess <- function(data,
   squire:::assert_numeric(reporting_fraction)
   squire:::assert_bounded(reporting_fraction, 0, 1, inclusive_left = FALSE, inclusive_right = TRUE)
   squire:::assert_pos_int(replicates)
-
-  # date change items
-  squire:::assert_same_length(R0_change, date_R0_change)
-  # checks that dates are not in the future compared to our data
-  if (!is.null(date_R0_change)) {
-    squire:::assert_date(date_R0_change)
-    if(as.Date(tail(date_R0_change,1)) > as.Date(tail(data$date, 1))) {
-      stop("Last date in date_R0_change is greater than the last date in data")
-    }
-  }
 
   # ------------------------------------
   # checks on odin interacting variables
@@ -990,8 +917,8 @@ pmcmc_excess <- function(data,
 
   # collect interventions for odin model likelihood
   interventions <- list(
-    R0_change = R0_change,
     date_R0_change = date_R0_change,
+    R0_change = R0_change,
     date_contact_matrix_set_change = date_contact_matrix_set_change,
     contact_matrix_set = contact_matrix_set,
     date_ICU_bed_capacity_change = date_ICU_bed_capacity_change,
@@ -1063,21 +990,7 @@ pmcmc_excess <- function(data,
   # create mcmc run functions depending on whether Gibbs Sampling
   #----------------
 
-  if(gibbs_sampling) {
-    # checking gibbs days is specified and is an integer
-    if (is.null(gibbs_days)) {
-      stop("if gibbs_sampling == TRUE, gibbs_days must be specified")
-    }
-    squire:::assert_int(gibbs_days)
-
-    # create our gibbs run func wrapper
-    run_mcmc_func <- function(...) {
-      force(gibbs_days)
-      squire:::run_mcmc_chain_gibbs(..., gibbs_days = gibbs_days)
-    }
-  } else {
-    run_mcmc_func <- squire:::run_mcmc_chain
-  }
+  run_mcmc_func <- squire:::run_mcmc_chain
 
   #----------------
   # proposals
@@ -1139,41 +1052,10 @@ pmcmc_excess <- function(data,
   #----------------
   # MCMC diagnostics and tidy
   #----------------
-  if (n_chains > 1) {
-    names(chains) <- paste0('chain', seq_len(n_chains))
 
-    # calculating rhat
-    # convert parallel chains to a coda-friendly format
-    chains_coda <- lapply(chains, function(x) {
+  pmcmc <- chains[[1]]
+  class(pmcmc) <- "squire_pmcmc"
 
-      traces <- x$results
-      if('start_date' %in% names(pars_init[[1]])) {
-        traces$start_date <- squire:::start_date_to_offset(data$date[1], traces$start_date)
-      }
-
-      coda::as.mcmc(traces[, names(pars_init[[1]])])
-    })
-
-    rhat <- tryCatch(expr = {
-      x <- coda::gelman.diag(chains_coda)
-      x
-    }, error = function(e) {
-      message('unable to calculate rhat')
-    })
-
-
-    pmcmc <- list(inputs = chains[[1]]$inputs,
-                  rhat = rhat,
-                  chains = lapply(chains, '[', -1))
-
-    class(pmcmc) <- 'squire_pmcmc_list'
-
-  } else {
-
-    pmcmc <- chains[[1]]
-    class(pmcmc) <- "squire_pmcmc"
-
-  }
   #--------------------------------------------------------
   # Section 3 of pMCMC Wrapper: Sample PMCMC Results
   #--------------------------------------------------------
@@ -1252,4 +1134,18 @@ pmcmc_excess <- function(data,
   #--------------------..
   return(r)
 
+}
+
+#a custom function copied from squire:::evaluate_Rt_pmcmc that only evaluates the splines
+evaluate_Rt_pmcmc_spline <- function(date_R0_change, R0, pars, Rt_args) {
+
+  Rt_rw_changes <- cumsum(c(0, unlist(pars[grepl("Rt_rw", names(pars))])))
+
+  if(length(Rt_rw_changes) != length(date_R0_change)){
+    stop("Error in spline calcs")
+  }
+
+  Rt <- as.numeric(rep(R0, length(date_R0_change)) * 2 * plogis(-Rt_rw_changes))
+
+  return(Rt)
 }
