@@ -266,7 +266,6 @@ fit_spline_rt <- function(data,
                      gibbs_days = NULL,
                      n_mcmc = n_mcmc,
                      log_prior = logprior,
-                     n_particles = 1,
                      steps_per_day = 1,
                      log_likelihood = excess_log_likelihood,
                      squire_model = squire_model,
@@ -325,27 +324,17 @@ fit_spline_rt <- function(data,
                                               )
 
   # remove states to keep object memory save down
-  if ("chains" %in% names(res$pmcmc_results)) {
-    for (i in seq_along(res$pmcmc_results$chains)) {
-      res$pmcmc_results$chains[[i]]$states <- NULL
-      res$pmcmc_results$chains[[i]]$covariance_matrix <- tail(
-        res$pmcmc_results$chains$chain1$covariance_matrix, 1
-      )
-    }
-  } else {
-    res$pmcmc_results$states <- NULL
-    res$pmcmc_results$covariance_matrix <- tail(
-      res$pmcmc_results$covariance_matrix, 1
-    )
-  }
+
+  res$pmcmc_results$states <- NULL
+  res$pmcmc_results$covariance_matrix <- tail(
+    res$pmcmc_results$covariance_matrix, 1
+  )
 
   return(res)
-
 }
 
-
 excess_log_likelihood <- function(pars, data, squire_model, model_params,
-  pars_obs, n_particles, forecast_days = 0, return = "ll", Rt_args,
+  pars_obs, forecast_days = 0, return = "ll", Rt_args,
   interventions, ...) {
   switch(return, full = {
     save_particles <- TRUE
@@ -526,17 +515,9 @@ run_deterministic_comparison_excess <- function(data, squire_model, model_params
   Ds[Ds < 0] <- 0
   deaths <- data$deaths[-1]
 
-  # what type of ll for deaths
-  if (obs_params$treated_deaths_only) {
-    Ds_heathcare <- diff(rowSums(out[, index$D_get]))
-    Ds_heathcare <- Ds_heathcare[data$day_end[-1]]
-    ll <- squire:::ll_nbinom(deaths, Ds_heathcare, obs_params$phi_death,
-                             obs_params$k_death, obs_params$exp_noise)
-  }
-  else {
-    ll <- squire:::ll_nbinom(deaths, Ds, obs_params$phi_death, obs_params$k_death,
+
+  ll <- squire:::ll_nbinom(deaths, Ds, obs_params$phi_death, obs_params$k_death,
                              obs_params$exp_noise)
-  }
 
   # and wrap up as normal
   date <- data$date[[1]] + seq_len(nrow(out)) - 1L
@@ -563,13 +544,10 @@ run_deterministic_comparison_excess <- function(data, squire_model, model_params
 }
 
 
-
-
 pmcmc_excess <- function(data,
                         n_mcmc,
                         log_likelihood = NULL,
                         log_prior = NULL,
-                        n_particles = 1e2,
                         steps_per_day = 4,
                         output_proposals = FALSE,
                         n_chains = 1,
@@ -733,7 +711,6 @@ pmcmc_excess <- function(data,
   # mcmc items
   squire:::assert_pos_int(n_mcmc)
   squire:::assert_pos_int(n_chains)
-  squire:::assert_pos_int(n_particles)
   squire:::assert_logical(output_proposals)
 
   # squire and odin
@@ -983,23 +960,14 @@ pmcmc_excess <- function(data,
                 pars_max = pars_max,
                 proposal_kernel = proposal_kernel,
                 scaling_factor = scaling_factor,
-                pars_discrete = pars_discrete),
-    n_particles = n_particles)
+                pars_discrete = pars_discrete))
 
 
   #----------------
   # create prior and likelihood functions given the inputs
   #----------------
 
-  if(is.null(log_prior)) {
-    # set improper, uninformative prior
-    log_prior <- function(pars) log(1e-10)
-  }
-  calc_lprior <- log_prior
-
-  if(is.null(log_likelihood)) {
-    log_likelihood <- squire:::calc_loglikelihood
-  } else if (!('...' %in% names(formals(log_likelihood)))){
+  if (!('...' %in% names(formals(log_likelihood)))){
     stop('log_likelihood function must be able to take unnamed arguments')
   }
 
@@ -1011,7 +979,6 @@ pmcmc_excess <- function(data,
                         model_params = model_params,
                         interventions = interventions,
                         pars_obs = pars_obs,
-                        n_particles = n_particles,
                         forecast_days = 0,
                         Rt_args = Rt_args,
                         return = "ll"
@@ -1047,7 +1014,7 @@ pmcmc_excess <- function(data,
                  curr_pars = pars_init),
       .f = run_mcmc_func,
       inputs = inputs,
-      calc_lprior = calc_lprior,
+      calc_lprior = log_prior,
       calc_ll = calc_ll,
       first_data_date = data$date[1],
       output_proposals = output_proposals,
@@ -1066,7 +1033,7 @@ pmcmc_excess <- function(data,
                  curr_pars = pars_init),
       .f = run_mcmc_func,
       inputs = inputs,
-      calc_lprior = calc_lprior,
+      calc_lprior = log_prior,
       calc_ll = calc_ll,
       first_data_date = data$date[1],
       output_proposals = output_proposals,
@@ -1085,9 +1052,39 @@ pmcmc_excess <- function(data,
   #----------------
   # MCMC diagnostics and tidy
   #----------------
+  if (n_chains > 1) {
+    names(chains) <- paste0('chain', seq_len(n_chains))
 
-  pmcmc <- chains[[1]]
-  class(pmcmc) <- "squire_pmcmc"
+    # calculating rhat
+    # convert parallel chains to a coda-friendly format
+    chains_coda <- lapply(chains, function(x) {
+
+      traces <- x$results
+      if('start_date' %in% names(pars_init[[1]])) {
+        traces$start_date <- squire:::start_date_to_offset(data$date[1], traces$start_date)
+      }
+
+      coda::as.mcmc(traces[, names(pars_init[[1]])])
+    })
+
+    rhat <- tryCatch(expr = {
+      x <- coda::gelman.diag(chains_coda)
+      x
+    }, error = function(e) {
+      message('unable to calculate rhat')
+    })
+
+
+    pmcmc <- list(inputs = chains[[1]]$inputs,
+                  rhat = rhat,
+                  chains = lapply(chains, '[', -1))
+
+    class(pmcmc) <- 'squire_pmcmc_list'
+
+  } else {
+    pmcmc <- chains[[1]]
+    class(pmcmc) <- "squire_pmcmc"
+  }
 
   #--------------------------------------------------------
   # Section 3 of pMCMC Wrapper: Sample PMCMC Results
@@ -1097,7 +1094,7 @@ pmcmc_excess <- function(data,
                                          n_chains = n_chains,
                                          n_trajectories = replicates,
                                          log_likelihood = log_likelihood,
-                                         n_particles = n_particles,
+                                         n_particles = 1,
                                          forecast_days = forecast)
 
   #--------------------------------------------------------
@@ -1173,9 +1170,13 @@ pmcmc_excess <- function(data,
 #the splines
 evaluate_Rt_pmcmc_spline <- function(date_R0_change, R0, pars, Rt_args) {
 
-  Rt_rw_changes <- cumsum(c(0, unlist(pars[grepl("Rt_rw", names(pars))])))
+  Rt_rw <- unlist(pars[grepl("Rt_rw", names(pars))])
 
-  if (length(Rt_rw_changes) != length(date_R0_change)){
+  Rt_rw_changes <- cumsum(
+    c(rep(0, length(date_R0_change) - length(Rt_rw)), Rt_rw)
+  )
+
+  if (any(diff(tail(date_R0_change, length(Rt_rw))) != Rt_args$Rt_rw_duration)){
     stop("Error in spline calcs")
   }
 

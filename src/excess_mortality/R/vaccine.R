@@ -1004,12 +1004,6 @@ rt_plot_immunity_vaccine <- function(out, R0_plot = FALSE) {
 
   iso3c <- squire::get_population(out$parameters$country)$iso3c[1]
 
-  if("pmcmc_results" %in% names(out)) {
-    wh <- "pmcmc_results"
-  } else {
-    wh <- "scan_results"
-  }
-
   date <- max(as.Date(out$pmcmc_results$inputs$data$date))
   date_0 <- date
 
@@ -1024,27 +1018,22 @@ rt_plot_immunity_vaccine <- function(out, R0_plot = FALSE) {
                                                start_date = out$replicate_parameters$start_date[y],
                                                steps_per_day = 1/out$parameters$dt)
 
-    if(wh == "scan_results") {
-      Rt <- c(out$replicate_parameters$R0[y],
-              vapply(tt$change, out[[wh]]$inputs$Rt_func, numeric(1),
-                     R0 = out$replicate_parameters$R0[y], Meff = out$replicate_parameters$Meff[y]))
-    } else {
-      Rt <- squire:::evaluate_Rt_pmcmc(
-        R0_change = tt$change,
+
+    Rt <- evaluate_Rt_pmcmc_spline(
         date_R0_change = tt$dates,
         R0 = out$replicate_parameters$R0[y],
         pars = as.list(out$replicate_parameters[y,]),
         Rt_args = out$pmcmc_results$inputs$Rt_args)
-    }
 
     df <- data.frame(
       "Rt" = Rt,
-      "Reff" = Rt*tail(na.omit(ratios[[y]]),length(Rt)),
-      "R0" = na.omit(Rt)[1]*tail(na.omit(ratios[[y]]),length(Rt)),
+      "Reff" = Rt*tail(ratios[[y]][tt$tt+1],length(Rt)),
+      "R0" = na.omit(Rt)[1]*tail(ratios[[y]][tt$tt+1],length(Rt)),
       "date" = tt$dates,
       "iso" = iso3c,
       rep = y,
-      stringsAsFactors = FALSE)
+      stringsAsFactors = FALSE) %>%
+      na.omit()
     df$pos <- seq_len(nrow(df))
     return(df)
   } )
