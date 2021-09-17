@@ -2,10 +2,7 @@
 fit_spline_rt <- function(data,
                           country,
                           pop,
-                          pars_obs_dur_R = 365,
-                          pars_obs_prob_hosp_multiplier = 1,
-                          pars_obs_delta_start_date = as.Date("2021-04-01"),
-                          pars_obs_shift_duration = 60,
+                          delta_characteristics,
                           model = "NIMUE",
                           n_mcmc = 10000,
                           replicates = 20,
@@ -15,89 +12,99 @@ fit_spline_rt <- function(data,
 
 
 
-  ## -----------------------------------------------------------------------------
+  ## ---------------------------------------------------------------------------
   ## Step 1 DATA CLEANING AND ORDERING
-  ## -----------------------------------------------------------------------------
+  ## ---------------------------------------------------------------------------
 
   # order data
-  data <- data[order(data$date),]
+  data <- data[order(data$date), ]
   data$date <- as.Date(data$date)
 
-  # and remove the rows with no data up to the first date that a death was reported
-  first_report <- which(data$deaths>0)[1]
+  # and remove the rows with no data up to the first date that a death was
+  # reported
+  first_report <- which(data$deaths > 0)[1]
   missing <- which(data$deaths == 0 | is.na(data$deaths))
-  to_remove <- missing[missing<first_report]
-  if(length(to_remove) > 0) {
-    if(length(to_remove) == (nrow(data)-1)) {
-      data <- data[-head(to_remove,-1),]
+  to_remove <- missing[missing < first_report]
+  if (length(to_remove) > 0) {
+    if (length(to_remove) == (nrow(data) - 1)) {
+      data <- data[-head(to_remove, - 1), ]
     } else {
-      data <- data[-to_remove,]
+      data <- data[-to_remove, ]
     }
   }
 
-  ## -----------------------------------------------------------------------------
+  ## ---------------------------------------------------------------------------
   ## Step 2a: PMCMC BOUNDS SETUP
-  ## -----------------------------------------------------------------------------
+  ## ---------------------------------------------------------------------------
 
   # dat_0 is just the current date now
   date_0 <- max(data$date)
 
   # what is the date of first death
-  null_na <- function(x) {if(is.null(x)) {NA} else {x}}
-  min_death_date <- data$date[which(data$deaths>0)][1]
+  null_na <- function(x) {
+    if (is.null(x)) {
+      NA
+    } else {
+      x
+    }
+  }
+  min_death_date <- data$date[which(data$deaths > 0)][1]
 
   # pmcmc args
-  start_adaptation <- max(2, round(n_mcmc/10)) # how long before adapting
+  start_adaptation <- max(2, round(n_mcmc / 10)) # how long before adapting
 
   # parallel call
   suppressWarnings(future::plan(future::multiprocess()))
 
   # Defualt parameter edges for pmcmc
-  R0_min <- 1.5
-  R0_max <- 10
-  last_start_date <- as.Date(null_na(min_death_date))-10
-  first_start_date <- as.Date(null_na(min_death_date))-55
-  date_start <- as.Date(null_na(min_death_date))-30
+  r0_min <- 1.5
+  r0_max <- 10
+  last_start_date <- as.Date(null_na(min_death_date)) - 10
+  first_start_date <- as.Date(null_na(min_death_date)) - 55
+  date_start <- as.Date(null_na(min_death_date)) - 30
 
-  ## -----------------------------------------------------------------------------
+  ## ---------------------------------------------------------------------------
   ## Step 2b: Sourcing suitable starting conditions
-  ## -----------------------------------------------------------------------------
+  ## ---------------------------------------------------------------------------
 
-  R0_start <- 3
+  r0_start <- 3
 
-  ## -----------------------------------------------------------------------------
+  ## ---------------------------------------------------------------------------
   ## Step 2c: Spline set up
-  ## -----------------------------------------------------------------------------
+  ## ---------------------------------------------------------------------------
 
   remaining_days <- as.Date(date_0) - date_start - 14 # reporting delay in place
 
   # how many spline pars do we need
-  rw_needed <- as.numeric(ceiling(remaining_days/rw_duration))
+  rw_needed <- as.numeric(ceiling(remaining_days / rw_duration))
 
   # set up rw pars
   pars_init_rw <- as.list(rep(0, rw_needed))
   pars_min_rw <- as.list(rep(-5, rw_needed))
   pars_max_rw <- as.list(rep(5, rw_needed))
   pars_discrete_rw <- as.list(rep(FALSE, rw_needed))
-  names(pars_init_rw) <- names(pars_min_rw) <- names(pars_max_rw) <- names(pars_discrete_rw) <- paste0("Rt_rw_", seq_len(rw_needed))
+  names(pars_init_rw) <- names(pars_min_rw) <- names(pars_max_rw) <-
+    names(pars_discrete_rw) <- paste0("Rt_rw_", seq_len(rw_needed))
 
-  ## -----------------------------------------------------------------------------
+  ## ---------------------------------------------------------------------------
   ## Step 2d: PMCMC initial parameter set up
-  ## -----------------------------------------------------------------------------
+  ## ---------------------------------------------------------------------------
 
   # PMCMC Parameters
-  pars_init = list('start_date' = date_start,
-                   'R0' = R0_start)
-  pars_min = list('start_date' = first_start_date,
-                  'R0' = R0_min)
-  pars_max = list('start_date' = last_start_date,
-                  'R0' = R0_max)
-  pars_discrete = list('start_date' = TRUE, 'R0' = FALSE)
-  pars_obs = list(phi_cases = 1, k_cases = 2, phi_death = 1, k_death = 2, exp_noise = 1e6,
-                  dur_R = pars_obs_dur_R,
-                  prob_hosp_multiplier = pars_obs_prob_hosp_multiplier,
-                  delta_start_date = pars_obs_delta_start_date,
-                  shift_duration = pars_obs_shift_duration)
+  pars_init <- list("start_date" = date_start,
+                   "R0" = r0_start)
+  pars_min <- list("start_date" = first_start_date,
+                  "R0" = r0_min)
+  pars_max <- list("start_date" = last_start_date,
+                  "R0" = r0_max)
+  pars_discrete <- list("start_date" = TRUE, "R0" = FALSE)
+  pars_obs <- list(phi_cases = 1, k_cases = 2, phi_death = 1, k_death = 2,
+    exp_noise = 1e6,
+    dur_R = delta_characteristics$required_dur_R,
+    prob_hosp_multiplier = delta_characteristics$prob_hosp_multiplier,
+    delta_start_date = delta_characteristics$start_date,
+    shift_duration = delta_characteristics$shift_duration
+  )
 
   # add in the spline list
   pars_init <- append(pars_init, pars_init_rw)
@@ -111,15 +118,15 @@ fit_spline_rt <- function(data,
   proposal_kernel["start_date", "start_date"] <- 1.5
 
   # MCMC Functions - Prior and Likelihood Calculation
-  logprior <- function(pars){
+  logprior <- function(pars) {
     ret <- dunif(x = pars[["start_date"]], min = -55, max = -10, log = TRUE) +
       dunif(x = pars[["R0"]], min = 1.5, max = 10, log = TRUE)
 
     # get rw spline parameters
-    if(any(grepl("Rt_rw", names(pars)))) {
-      Rt_rws <- pars[grepl("Rt_rw", names(pars))]
-      for (i in seq_along(Rt_rws)) {
-        ret <- ret + dnorm(x = Rt_rws[[i]], mean = 0, sd = 0.2, log = TRUE)
+    if (any(grepl("Rt_rw", names(pars)))) {
+      rt_rws <- pars[grepl("Rt_rw", names(pars))]
+      for (i in seq_along(rt_rws)) {
+        ret <- ret + dnorm(x = rt_rws[[i]], mean = 0, sd = 0.2, log = TRUE)
       }
     }
     return(ret)
@@ -143,23 +150,27 @@ fit_spline_rt <- function(data,
   who_vacc <- readRDS("who_vacc.rds")
   who_vacc_meta <- readRDS("who_vacc_meta.rds")
   owid <- readRDS("owid.rds")
-  owid <- owid %>% filter(countryterritoryCode == iso3c) %>%
+  owid <- owid %>%
+    filter(countryterritoryCode == iso3c) %>%
     select(date, contains("vacc"))
 
-  vacc_inputs <- get_vaccine_inputs(iso3c, vdm, vacc_types, owid, date_0, who_vacc, who_vacc_meta,
-                                    delta_start_date = pars_obs_delta_start_date,
-                                    shift_duration = pars_obs_shift_duration
+  vacc_inputs <- get_vaccine_inputs(iso3c, vdm, vacc_types, owid, date_0,
+    who_vacc, who_vacc_meta,
+    delta_start_date = delta_characteristics$start_date,
+    shift_duration = delta_characteristics$shift_duration
   )
 
   # mixing matrix - assume is same as country as whole
-  mix_mat <- squire::get_mixing_matrix(country)
+  baseline_contact_matrix <- squire::get_mixing_matrix(country)
 
   # Now overwrite these with the initial conditions previously found
   pi <- readRDS("pars_init.rds")
-  pf <- pi[[iso3c]]
-  #only use old start date if its compatible with the data, as this can change with excess mortality estimates
-  if("start_date" %in% names(pf)){
-    if(pf$start_date > pars_max$start_date | pf$start_date < pars_min$start_date){
+  pf <- pi[[country]]
+  #only use old start date if its compatible with the data, as this can change
+  #with excess mortality estimates
+  if ("start_date" %in% names(pf)) {
+    if (pf$start_date > pars_max$start_date |
+          pf$start_date < pars_min$start_date) {
       pf$start_date <- NULL
     }
   }
@@ -169,50 +180,62 @@ fit_spline_rt <- function(data,
 
   # grab old scaling factor
   scaling_factor <- 1
-  if("scaling_factor" %in% names(pf)) {
+  if ("scaling_factor" %in% names(pf)) {
     scaling_factor <- as.numeric(pf$scaling_factor)
   }
 
   # grab old covariance matrix
   # use the old covar matrix if available
-  if("covariance_matrix" %in% names(pf)) {
+  if ("covariance_matrix" %in% names(pf)) {
 
     # old proposal kernel
     proposal_kernel_proposed <- pf$covariance_matrix[[1]]
 
-    #ensure that it only contains parameters used e.g. already in the current kernal
+    #ensure that it only contains parameters used e.g.
+    # already in the current kernal
     proposal_kernel_proposed <- proposal_kernel_proposed[
       rownames(proposal_kernel_proposed) %in% rownames(proposal_kernel),
       colnames(proposal_kernel_proposed) %in% colnames(proposal_kernel)
       ]
 
     # check if it needs to be expanded
-    if(length(grep("Rt_rw", colnames(proposal_kernel_proposed))) == rw_needed) {
+    if (length(
+      grep("Rt_rw", colnames(proposal_kernel_proposed))
+    ) == rw_needed) {
 
       proposal_kernel <- proposal_kernel_proposed
 
-    } else if(length(grep("Rt_rw", colnames(proposal_kernel_proposed))) < rw_needed) {
+    } else if (length(
+      grep("Rt_rw", colnames(proposal_kernel_proposed))
+    ) < rw_needed) {
 
       add_similar_cr <- function(x) {
         x <- cbind(rbind(x, 0), 0)
-        rw_num <- colnames(x)[nrow(x)-1]
-        new_rw <- paste0("Rt_rw_", as.numeric(gsub("(.*_)(\\d*)$", "\\2", rw_num)) + 1)
+        rw_num <- colnames(x)[nrow(x) - 1]
+        new_rw <- paste0("Rt_rw_",
+          as.numeric(gsub("(.*_)(\\d*)$", "\\2", rw_num)) + 1)
         colnames(x)[ncol(x)] <- rownames(x)[nrow(x)] <- new_rw
-        x[nrow(x),] <- x[nrow(x) - 1,]
-        x[,ncol(x)] <- x[,ncol(x) - 1]
+        x[nrow(x), ] <- x[nrow(x) - 1, ]
+        x[, ncol(x)] <- x[, ncol(x) - 1]
         return(x)
       }
 
       # add as needed
-      for(i in seq_len(rw_needed - length(grep("Rt_rw", colnames(proposal_kernel_proposed))))) {
+      for (i in seq_len(
+        rw_needed - length(grep("Rt_rw", colnames(proposal_kernel_proposed))))
+      ) {
         proposal_kernel_proposed <- add_similar_cr(proposal_kernel_proposed)
       }
       proposal_kernel <- proposal_kernel_proposed
     } else {
 
       # remove as needed
-      for(i in seq_len(length(grep("Rt_rw", colnames(proposal_kernel_proposed))) - rw_needed)) {
-        proposal_kernel_proposed <- proposal_kernel_proposed[-nrow(proposal_kernel_proposed),-ncol(proposal_kernel_proposed)]
+      for (i in seq_len(
+        length(grep("Rt_rw", colnames(proposal_kernel_proposed))) - rw_needed)
+      ) {
+        proposal_kernel_proposed <- proposal_kernel_proposed[
+          -nrow(proposal_kernel_proposed), -ncol(proposal_kernel_proposed)
+          ]
       }
       proposal_kernel <- proposal_kernel_proposed
 
@@ -220,21 +243,23 @@ fit_spline_rt <- function(data,
 
   }
 
-  ## -----------------------------------------------------------------------------
+  ## ---------------------------------------------------------------------------
   ## Step 3: Run PMCMC
-  ## -----------------------------------------------------------------------------
+  ## ---------------------------------------------------------------------------
 
-  # this is here if the model struggles to fit initially with nimue then we can use squire first
-  # to get a better fit firt which can then be used to update the pars_init
+  # this is here if the model struggles to fit initially with nimue then we can
+  # use squire first to get a better fit firt which can then be used to update
+  # the pars_init
   if (model == "SQUIRE") {
-    squire_model = squire:::deterministic_model()
-  } else if(model == "NIMUE") {
-    squire_model = nimue::nimue_deterministic_model(use_dde = TRUE)
+    squire_model <- squire:::deterministic_model()
+  } else if (model == "NIMUE") {
+    squire_model <- nimue::nimue_deterministic_model(use_dde = TRUE)
   }
 
   # calculate dates where R0 changes etc
 
-  date_R0_change <- pars_max$start_date + seq(0, rw_needed-1, by = 1)*rw_duration
+  date_r0_change <- pars_max$start_date +
+    seq(0, rw_needed - 1, by = 1) * rw_duration
 
   # run the pmcmc
   res <- pmcmc_excess(country = country,
@@ -254,9 +279,9 @@ fit_spline_rt <- function(data,
                      pars_discrete = pars_discrete,
                      pars_obs = pars_obs,
                      proposal_kernel = proposal_kernel,
-                     date_R0_change = date_R0_change,
-                     R0_change = rep(1, length(date_R0_change)),
-                     burnin = ceiling(n_mcmc/10),
+                     date_R0_change = date_r0_change,
+                     R0_change = rep(1, length(date_r0_change)),
+                     burnin = ceiling(n_mcmc / 10),
                      Rt_args = list(Rt_rw_duration = rw_duration,
                                     Rt_rw_start_date = pars_max$start_date,
                                     Rt_needed = rw_needed),
@@ -268,14 +293,22 @@ fit_spline_rt <- function(data,
                      date_vaccine_change = vacc_inputs$date_vaccine_change,
                      max_vaccine = vacc_inputs$max_vaccine,
                      baseline_max_vaccine = 0,
-                     date_vaccine_efficacy_infection_change = vacc_inputs$date_vaccine_change,
-                     vaccine_efficacy_infection = vacc_inputs$vaccine_efficacy_infection,
-                     baseline_vaccine_efficacy_infection = vacc_inputs$vaccine_efficacy_infection[[1]],
-                     date_vaccine_efficacy_disease_change = vacc_inputs$date_vaccine_change,
-                     vaccine_efficacy_disease = vacc_inputs$vaccine_efficacy_disease,
-                     baseline_vaccine_efficacy_disease = vacc_inputs$vaccine_efficacy_disease[[1]],
-                     rel_infectiousness_vaccinated = vacc_inputs$rel_infectiousness_vaccinated,
+                     date_vaccine_efficacy_infection_change =
+                        vacc_inputs$date_vaccine_change,
+                     vaccine_efficacy_infection =
+                        vacc_inputs$vaccine_efficacy_infection,
+                     baseline_vaccine_efficacy_infection =
+                        vacc_inputs$vaccine_efficacy_infection[[1]],
+                     date_vaccine_efficacy_disease_change =
+                        vacc_inputs$date_vaccine_change,
+                     vaccine_efficacy_disease =
+                        vacc_inputs$vaccine_efficacy_disease,
+                     baseline_vaccine_efficacy_disease =
+                        vacc_inputs$vaccine_efficacy_disease[[1]],
+                     rel_infectiousness_vaccinated =
+                        vacc_inputs$rel_infectiousness_vaccinated,
                      vaccine_coverage_mat = vaccine_coverage_mat,
+                     baseline_contact_matrix = baseline_contact_matrix,
                      dur_R = 365,
                      dur_V = 5000)
 
@@ -334,7 +367,7 @@ excess_log_likelihood <- function(pars, data, squire_model, model_params, pars_o
   else {
     tt_list <- squire:::intervention_dates_for_odin(dates = date_contact_matrix_set_change,
                                                     change = seq_along(interventions$contact_matrix_set)[-1],
-                                                    start_date = start_date, steps_per_day = round(1/model_params$dt),
+                                                    start_date = start_date, steps_per_day = round(1 / model_params$dt),
                                                     starting_change = 1)
     model_params$tt_matrix <- tt_list$tt
     model_params$mix_mat_set <- model_params$mix_mat_set[tt_list$change,, ]
@@ -345,7 +378,7 @@ excess_log_likelihood <- function(pars, data, squire_model, model_params, pars_o
   else {
     tt_list <- squire:::intervention_dates_for_odin(dates = date_ICU_bed_capacity_change,
                                                     change = interventions$ICU_bed_capacity[-1], start_date = start_date,
-                                                    steps_per_day = round(1/model_params$dt), starting_change = interventions$ICU_bed_capacity[1])
+                                                    steps_per_day = round(1 / model_params$dt), starting_change = interventions$ICU_bed_capacity[1])
     model_params$tt_ICU_beds <- tt_list$tt
     model_params$ICU_beds <- tt_list$change
   }
@@ -355,7 +388,7 @@ excess_log_likelihood <- function(pars, data, squire_model, model_params, pars_o
   else {
     tt_list <- squire:::intervention_dates_for_odin(dates = date_hosp_bed_capacity_change,
                                                     change = interventions$hosp_bed_capacity[-1], start_date = start_date,
-                                                    steps_per_day = round(1/model_params$dt), starting_change = interventions$hosp_bed_capacity[1])
+                                                    steps_per_day = round(1 / model_params$dt), starting_change = interventions$hosp_bed_capacity[1])
     model_params$tt_hosp_beds <- tt_list$tt
     model_params$hosp_beds <- tt_list$change
   }
@@ -365,7 +398,7 @@ excess_log_likelihood <- function(pars, data, squire_model, model_params, pars_o
   else {
     tt_list <- squire:::intervention_dates_for_odin(dates = date_vaccine_change,
                                                     change = interventions$max_vaccine[-1], start_date = start_date,
-                                                    steps_per_day = round(1/model_params$dt), starting_change = interventions$max_vaccine[1])
+                                                    steps_per_day = round(1 / model_params$dt), starting_change = interventions$max_vaccine[1])
     model_params$tt_vaccine <- tt_list$tt
     model_params$max_vaccine <- tt_list$change
   }
@@ -375,7 +408,7 @@ excess_log_likelihood <- function(pars, data, squire_model, model_params, pars_o
   else {
     tt_list <- squire:::intervention_dates_for_odin(dates = date_vaccine_efficacy_infection_change,
                                            change = seq_along(interventions$vaccine_efficacy_infection)[-1],
-                                           start_date = start_date, steps_per_day = round(1/model_params$dt),
+                                           start_date = start_date, steps_per_day = round(1 / model_params$dt),
                                            starting_change = 1)
     model_params$tt_vaccine_efficacy_infection <- tt_list$tt
     model_params$vaccine_efficacy_infection <- model_params$vaccine_efficacy_infection[tt_list$change,
@@ -387,7 +420,7 @@ excess_log_likelihood <- function(pars, data, squire_model, model_params, pars_o
   else {
     tt_list <- squire:::intervention_dates_for_odin(dates = date_vaccine_efficacy_disease_change,
                                                     change = seq_along(interventions$vaccine_efficacy_disease)[-1],
-                                                    start_date = start_date, steps_per_day = round(1/model_params$dt),
+                                                    start_date = start_date, steps_per_day = round(1 / model_params$dt),
                                                     starting_change = 1)
     model_params$tt_vaccine_efficacy_disease <- tt_list$tt
     model_params$prob_hosp <- model_params$prob_hosp[tt_list$change,
@@ -397,11 +430,11 @@ excess_log_likelihood <- function(pars, data, squire_model, model_params, pars_o
   #get the dates where we will change Rt
 
   date_R0_change <- c(start_date,
-                      Rt_args$Rt_rw_start_date + seq(0, Rt_args$Rt_needed-1)*Rt_args$Rt_rw_duration
+                      Rt_args$Rt_rw_start_date + seq(0, Rt_args$Rt_needed - 1)*Rt_args$Rt_rw_duration
                       )
 
   tt_list <- squire:::intervention_dates_for_odin(dates = date_R0_change,
-                                       change = rep(1, length(date_R0_change)), start_date = start_date, steps_per_day = round(1/model_params$dt),
+                                       change = rep(1, length(date_R0_change)), start_date = start_date, steps_per_day = round(1 / model_params$dt),
                                        starting_change = 1)
   model_params$tt_beta <- tt_list$tt
 
@@ -443,7 +476,7 @@ run_deterministic_comparison_excess <- function(data, squire_model, model_params
 
   # set up as normal
   data <- squire:::particle_filter_data(data = data, start_date = model_start_date,
-                                        steps_per_day = round(1/model_params$dt))
+                                        steps_per_day = round(1 / model_params$dt))
   model_params$tt_beta <- round(model_params$tt_beta * model_params$dt)
   model_params$tt_contact_matrix <- round(model_params$tt_contact_matrix *
                                             model_params$dt)
@@ -463,7 +496,7 @@ run_deterministic_comparison_excess <- function(data, squire_model, model_params
     if(obs_params$dur_R != 365) {
       ch_dur_R <- as.integer(as.Date(obs_params$delta_start_date) - model_start_date)
       model_params$tt_dur_R <- c(0, ch_dur_R, ch_dur_R + obs_params$shift_duration)
-      model_params$gamma_R <- c(model_params$gamma_R, 2/obs_params$dur_R, model_params$gamma_R)
+      model_params$gamma_R <- c(model_params$gamma_R, 2 / obs_params$dur_R, model_params$gamma_R)
     }
   }
 
@@ -597,7 +630,7 @@ pmcmc_excess <- function(data,
                         replicates = 100,
                         forecast = 0,
                         required_acceptance_ratio = 0.23,
-                        start_adaptation = round(n_mcmc/2),
+                        start_adaptation = round(n_mcmc / 2),
                         gibbs_sampling = FALSE,
                         gibbs_days = NULL,
                         ...) {
@@ -648,7 +681,7 @@ pmcmc_excess <- function(data,
   squire:::assert_date(pars_init[[1]]$start_date)
   squire:::assert_date(pars_min$start_date)
   squire:::assert_date(pars_max$start_date)
-  if (pars_max$start_date >= as.Date(data$date[1])-1) {
+  if (pars_max$start_date >= as.Date(data$date[1]) - 1) {
     stop("Maximum start date must be at least 2 days before the first date in data")
   }
 
@@ -900,7 +933,7 @@ pmcmc_excess <- function(data,
   model_params <- squire_model$parameter_func(
     country = country,
     population = population,
-    dt = 1/steps_per_day,
+    dt = 1 / steps_per_day,
     contact_matrix_set = contact_matrix_set,
     tt_contact_matrix = tt_contact_matrix,
     hosp_bed_capacity = hosp_bed_capacity,
