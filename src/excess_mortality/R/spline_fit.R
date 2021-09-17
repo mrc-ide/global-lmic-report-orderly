@@ -164,8 +164,7 @@ fit_spline_rt <- function(data,
   baseline_contact_matrix <- squire::get_mixing_matrix(country)
 
   # Now overwrite these with the initial conditions previously found
-  pi <- readRDS("pars_init.rds")
-  pf <- pi[[country]]
+  pf <- readRDS("pars_init.rds")[[country]]
   #only use old start date if its compatible with the data, as this can change
   #with excess mortality estimates
   if ("start_date" %in% names(pf)) {
@@ -318,17 +317,26 @@ fit_spline_rt <- function(data,
   # Add the prior
   res$pmcmc_results$inputs$prior <- as.function(c(formals(logprior),
                                                   body(logprior)),
-                                                envir = new.env(parent = environment(stats::acf)))
+                                                envir = new.env(
+                                                  parent = environment(
+                                                    stats::acf
+                                                  )
+                                                )
+                                              )
 
   # remove states to keep object memory save down
-  if("chains" %in% names(res$pmcmc_results)) {
-    for(i in seq_along(res$pmcmc_results$chains)) {
+  if ("chains" %in% names(res$pmcmc_results)) {
+    for (i in seq_along(res$pmcmc_results$chains)) {
       res$pmcmc_results$chains[[i]]$states <- NULL
-      res$pmcmc_results$chains[[i]]$covariance_matrix <- tail(res$pmcmc_results$chains$chain1$covariance_matrix,1)
+      res$pmcmc_results$chains[[i]]$covariance_matrix <- tail(
+        res$pmcmc_results$chains$chain1$covariance_matrix, 1
+      )
     }
   } else {
     res$pmcmc_results$states <- NULL
-    res$pmcmc_results$covariance_matrix <- tail(res$pmcmc_results$covariance_matrix, 1)
+    res$pmcmc_results$covariance_matrix <- tail(
+      res$pmcmc_results$covariance_matrix, 1
+    )
   }
 
   return(res)
@@ -336,21 +344,24 @@ fit_spline_rt <- function(data,
 }
 
 
-excess_log_likelihood <- function(pars, data, squire_model, model_params, pars_obs, n_particles,
-                                 forecast_days = 0, return = "ll", Rt_args, interventions, ...) {
+excess_log_likelihood <- function(pars, data, squire_model, model_params,
+  pars_obs, n_particles, forecast_days = 0, return = "ll", Rt_args,
+  interventions, ...) {
   switch(return, full = {
     save_particles <- TRUE
-    full_output <- TRUE
     pf_return <- "sample"
   }, ll = {
     save_particles <- FALSE
     forecast_days <- 0
-    full_output <- FALSE
     pf_return <- "single"
   }, {
     stop("Unknown return type to calc_loglikelihood")
   })
-  squire:::assert_in(c("R0", "start_date"), names(pars), message = "Must specify R0, start date to infer")
+  squire:::assert_in(
+    c("R0", "start_date"),
+    names(pars),
+    message = "Must specify R0, start date to infer"
+  )
   R0 <- pars[["R0"]]
   start_date <- pars[["start_date"]]
   squire:::assert_pos(R0)
@@ -359,53 +370,44 @@ excess_log_likelihood <- function(pars, data, squire_model, model_params, pars_o
   date_ICU_bed_capacity_change <- interventions$date_ICU_bed_capacity_change
   date_hosp_bed_capacity_change <- interventions$date_hosp_bed_capacity_change
   date_vaccine_change <- interventions$date_vaccine_change
-  date_vaccine_efficacy_infection_change <- interventions$date_vaccine_efficacy_infection_change
-  date_vaccine_efficacy_disease_change <- interventions$date_vaccine_efficacy_disease_change
-  if (is.null(date_contact_matrix_set_change)) {
-    tt_contact_matrix <- 0
-  }
-  else {
-    tt_list <- squire:::intervention_dates_for_odin(dates = date_contact_matrix_set_change,
-                                                    change = seq_along(interventions$contact_matrix_set)[-1],
-                                                    start_date = start_date, steps_per_day = round(1 / model_params$dt),
-                                                    starting_change = 1)
+  date_vaccine_efficacy_infection_change <-
+    interventions$date_vaccine_efficacy_infection_change
+  date_vaccine_efficacy_disease_change <-
+    interventions$date_vaccine_efficacy_disease_change
+
+  if (!is.null(date_contact_matrix_set_change)) {
+    tt_list <- squire:::intervention_dates_for_odin(
+      dates = date_contact_matrix_set_change,
+      change = seq_along(interventions$contact_matrix_set)[-1],
+      start_date = start_date, steps_per_day = round(1 / model_params$dt),
+      starting_change = 1)
     model_params$tt_matrix <- tt_list$tt
-    model_params$mix_mat_set <- model_params$mix_mat_set[tt_list$change,, ]
+    model_params$mix_mat_set <- model_params$mix_mat_set[tt_list$change, , ]
   }
-  if (is.null(date_ICU_bed_capacity_change)) {
-    tt_ICU_beds <- 0
-  }
-  else {
-    tt_list <- squire:::intervention_dates_for_odin(dates = date_ICU_bed_capacity_change,
-                                                    change = interventions$ICU_bed_capacity[-1], start_date = start_date,
-                                                    steps_per_day = round(1 / model_params$dt), starting_change = interventions$ICU_bed_capacity[1])
+  if (!is.null(date_ICU_bed_capacity_change)) {
+    tt_list <- squire:::intervention_dates_for_odin(
+      dates = date_ICU_bed_capacity_change,
+      change = interventions$ICU_bed_capacity[-1], start_date = start_date,
+      steps_per_day = round(1 / model_params$dt),
+      starting_change = interventions$ICU_bed_capacity[1])
     model_params$tt_ICU_beds <- tt_list$tt
     model_params$ICU_beds <- tt_list$change
   }
-  if (is.null(date_hosp_bed_capacity_change)) {
-    tt_hosp_beds <- 0
-  }
-  else {
+  if (!is.null(date_hosp_bed_capacity_change)) {
     tt_list <- squire:::intervention_dates_for_odin(dates = date_hosp_bed_capacity_change,
                                                     change = interventions$hosp_bed_capacity[-1], start_date = start_date,
                                                     steps_per_day = round(1 / model_params$dt), starting_change = interventions$hosp_bed_capacity[1])
     model_params$tt_hosp_beds <- tt_list$tt
     model_params$hosp_beds <- tt_list$change
   }
-  if (is.null(date_vaccine_change)) {
-    tt_vaccine <- 0
-  }
-  else {
+  if (!is.null(date_vaccine_change)) {
     tt_list <- squire:::intervention_dates_for_odin(dates = date_vaccine_change,
                                                     change = interventions$max_vaccine[-1], start_date = start_date,
                                                     steps_per_day = round(1 / model_params$dt), starting_change = interventions$max_vaccine[1])
     model_params$tt_vaccine <- tt_list$tt
     model_params$max_vaccine <- tt_list$change
   }
-  if (is.null(date_vaccine_efficacy_infection_change)) {
-    tt_vaccine_efficacy_infection <- 0
-  }
-  else {
+  if (!is.null(date_vaccine_efficacy_infection_change)) {
     tt_list <- squire:::intervention_dates_for_odin(dates = date_vaccine_efficacy_infection_change,
                                            change = seq_along(interventions$vaccine_efficacy_infection)[-1],
                                            start_date = start_date, steps_per_day = round(1 / model_params$dt),
@@ -414,10 +416,7 @@ excess_log_likelihood <- function(pars, data, squire_model, model_params, pars_o
     model_params$vaccine_efficacy_infection <- model_params$vaccine_efficacy_infection[tt_list$change,
                                                                                        , ]
   }
-  if (is.null(date_vaccine_efficacy_disease_change)) {
-    tt_vaccine_efficacy_disease <- 0
-  }
-  else {
+  if (!is.null(date_vaccine_efficacy_disease_change)) {
     tt_list <- squire:::intervention_dates_for_odin(dates = date_vaccine_efficacy_disease_change,
                                                     change = seq_along(interventions$vaccine_efficacy_disease)[-1],
                                                     start_date = start_date, steps_per_day = round(1 / model_params$dt),
@@ -426,6 +425,7 @@ excess_log_likelihood <- function(pars, data, squire_model, model_params, pars_o
     model_params$prob_hosp <- model_params$prob_hosp[tt_list$change,
                                                      , ]
   }
+
   #use custom function to get the R0 values and times
   #get the dates where we will change Rt
 
@@ -1162,19 +1162,20 @@ pmcmc_excess <- function(data,
   r$parameters$time_period <- as.numeric(diff(as.Date(range(rownames(r$output)))))
   r$parameters$dt <- model_params$dt
 
-  #--------------------..
+  #-----------------------------------------------------------------------------
   # out
-  #--------------------..
+  #-----------------------------------------------------------------------------
   return(r)
 
 }
 
-#a custom function copied from squire:::evaluate_Rt_pmcmc that only evaluates the splines
+#a custom function copied from squire:::evaluate_Rt_pmcmc that only evaluates
+#the splines
 evaluate_Rt_pmcmc_spline <- function(date_R0_change, R0, pars, Rt_args) {
 
   Rt_rw_changes <- cumsum(c(0, unlist(pars[grepl("Rt_rw", names(pars))])))
 
-  if(length(Rt_rw_changes) != length(date_R0_change)){
+  if (length(Rt_rw_changes) != length(date_R0_change)){
     stop("Error in spline calcs")
   }
 

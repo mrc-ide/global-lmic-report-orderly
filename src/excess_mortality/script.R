@@ -120,10 +120,8 @@ if (nrow(df) == 0 | sum(df$deaths) == 0) {
   } else{
     #these settings should lead to no adjustment
     delta_characteristics <- data.frame(
-      dur_R = 365,
-      prob_hosp_multiplier = 1,
-      delta_start_date = NULL,
-      shift_duration = NULL
+      required_dur_R = 365,
+      prob_hosp_multiplier = 1
     )
   }
 
