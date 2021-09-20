@@ -135,6 +135,8 @@ if(!excess_mortality){
   # not needed input parameters - leave as FALSE. See FAQ for more info on these
   full_scenarios <- FALSE
   gibbs_sampling <- FALSE
+} else{
+  adjust_delta <- TRUE
 }
 
 # get the isos
@@ -163,7 +165,8 @@ if(excess_mortality){
         iso3c = x,
         date=date,
         short_run=short_run,
-        n_mcmc=n_mcmc
+        n_mcmc=n_mcmc,
+        adjust_delta = adjust_delta
       )
     )
   }
@@ -248,7 +251,7 @@ which countries require rerunning and rebundle those to be run again:
 
 ```{r eval=FALSE, message=FALSE, warning = FALSE}
 # bundle the countries we need to rerun
-iso3cs_to_rerun <- c("BGD") 
+iso3cs_to_rerun <- c("BGD", "BRN", "ITA") 
 bundles_to_rerun <- lapply(
   iso3cs_to_rerun, 
   function(x) {
@@ -269,7 +272,31 @@ bundles_to_rerun <- lapply(
 )
 
 names(bundles_to_rerun) <- iso3cs_to_rerun
-saveRDS(bundles_to_rerun, file.path(path_bundles, "BGD_to_rerun.rds"))
+saveRDS(bundles_to_rerun, file.path(path_bundles, "bundles_to_rerun.rds"))
+
+
+iso3cs_to_rerun <- c("BRN") 
+bundles_to_rerun <- lapply(
+  iso3cs_to_rerun, 
+  function(x) {
+    orderly::orderly_bundle_pack(
+      path = path_bundles,
+      name = "lmic_reports_vaccine",
+      parameters = list(
+        iso3c = x,
+        date=date,
+        short_run=short_run,
+        parallel=parallel,
+        full_scenarios=full_scenarios,
+        gibbs_sampling=gibbs_sampling,
+        n_mcmc=n_mcmc
+      )
+    )
+  }
+)
+
+names(bundles_to_rerun) <- iso3cs_to_rerun
+saveRDS(bundles_to_rerun, file.path(path_bundles, "BRN_to_rerun.rds"))
 
 ```
 
@@ -299,12 +326,11 @@ I will use to replace their corresponding countries with in `bundles`:
 ```{r eval=FALSE, message=FALSE, warning = FALSE}
 
 # any that we had to rerun
-rerun <- readRDS(file.path(path_bundles, "bundles_to_rerun.rds"))
-bgd_rerun <- readRDS(file.path(path_bundles, "BGD_to_rerun.rds"))
+rerun <- readRDS(file.path(path_bundles, "BRN_to_rerun.rds"))
 
 # replace the ones we rerun within bundles
-nms_ch <- c(names(rerun), names(bgd_rerun))
-bundles[nms_ch] <- c(rerun, bgd_rerun)
+nms_ch <- c(names(rerun))
+bundles[nms_ch] <- c(rerun)
 
 # now get the filepaths of the tasks to import back
 tasks <- gsub("raw", "derived", as.character(vapply(bundles, "[[", character(1), "path")))

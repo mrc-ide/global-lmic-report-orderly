@@ -73,7 +73,7 @@ fit_spline_rt <- function(data,
   ## Step 2c: Spline set up
   ## ---------------------------------------------------------------------------
 
-  remaining_days <- as.Date(date_0) - date_start - 14 # reporting delay in place
+  remaining_days <- as.Date(date_0) - last_start_date - 14 # reporting delay in place
 
   # how many spline pars do we need
   rw_needed <- as.numeric(ceiling(remaining_days / rw_duration))

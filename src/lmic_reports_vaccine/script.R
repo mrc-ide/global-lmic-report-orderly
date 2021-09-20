@@ -361,9 +361,13 @@ if(sum(ecdc_df$deaths) > 0) {
   pars_obs = list(phi_cases = 1, k_cases = 2, phi_death = 1, k_death = 2, exp_noise = 1e6)
 
   # here use lower tolerance for countries that have had a really long time without deaths
-  if(iso3c %in% c("NZL", "BRN")) {
+  #removed BRN to see if solves error with too small steps
+  if(iso3c %in% c("NZL")) {
     pars_obs$atol <- 1e-8
     pars_obs$rtol <- 1e-8
+  } else if(iso3c %in% c("BRN")) {
+    pars_obs$atol <- 1e-10
+    pars_obs$rtol <- 1e-10
   }
 
   # add in the spline list
