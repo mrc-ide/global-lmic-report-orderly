@@ -6,6 +6,21 @@ get_vaccine_inputs <- function(iso3c, vdm, vacc_types, owid, date_0, who_vacc, w
   owid <- owid %>% filter(date <= as.Date(date_0))
   who_vacc_meta <- who_vacc_meta %>% filter(countryterritoryCode == iso3c)
   who_vacc <- who_vacc %>% filter(countryterritoryCode == iso3c)
+  #if date is great than ours we assume it is date_0 just for simplicity
+  if(nrow(who_vacc)!=0){
+    if(lubridate::is.Date(who_vacc$DATE_UPDATED)){
+      if(as.Date(who_vacc$DATE_UPDATED) > as.Date(date_0)){
+        who_vacc$DATE_UPDATED <- date_0
+      }
+    }
+  }
+  if(nrow(who_vacc_meta)!=0){
+    if(lubridate::is.Date(who_vacc_meta$START_DATE)){
+      if(as.Date(who_vacc_meta$START_DATE) > as.Date(date_0)){
+        who_vacc_meta$START_DATE <- date_0
+      }
+    }
+  }
 
   # defaults
   ve_i_low <- 0.6

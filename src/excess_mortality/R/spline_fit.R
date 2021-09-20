@@ -260,10 +260,11 @@ fit_spline_rt <- function(data,
   date_r0_change <- pars_max$start_date +
     seq(0, rw_needed - 1, by = 1) * rw_duration
 
+  date_r0_change <- date_r0_change[date_r0_change <= date_0]
+
   # run the pmcmc
   res <- pmcmc_excess(country = country,
                       data = data,
-                     gibbs_days = NULL,
                      n_mcmc = n_mcmc,
                      log_prior = logprior,
                      steps_per_day = 1,
@@ -609,8 +610,6 @@ pmcmc_excess <- function(data,
                         forecast = 0,
                         required_acceptance_ratio = 0.23,
                         start_adaptation = round(n_mcmc / 2),
-                        gibbs_sampling = FALSE,
-                        gibbs_days = NULL,
                         ...) {
 
   #------------------------------------------------------------
